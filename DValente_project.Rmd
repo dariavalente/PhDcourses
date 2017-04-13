@@ -1,0 +1,152 @@
+---
+title: PhD Toolbox 2017 Project
+output: html_document
+---
+
+### **A reproducible research step by step!** 
+
+#### _Index_
+1. _Install the packages we are going to need_
+1. _Download and save data_
+1. _Data cleaning and processing_
+    1. _Remove missing values_
+    1. _Extract and keep the most common species, calculate new variables_
+1. _Export and save cleaned data_
+1. _Plots_
+    1. _Scatter and Barplot_
+    1. _Time series plot_
+
+##### **1. Install the packages we are going to need** 
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+# install.packages("tidyverse")   
+# install.packages("DT")
+library(tidyverse)
+library(DT) 
+```
+
+##### **2. Download and save data**
+```{r surveys}
+download.file("https://ndownloader.figshare.com/files/2292169","portal_data_joined.csv")
+surveys <-read.csv("portal_data_joined.csv") # Choose your own directory!
+```
+
+
+##### **3. Data cleaning and processing**
+###### 3.1. Remove missing values
+```{r surveys_complete}
+surveys_complete <- surveys %>%
+filter(species_id != "",            # remove missing species_id
+         !is.na(weight),            # remove missing weight
+         !is.na(hindfoot_length),   # remove missing hindfoot_length
+         sex != "")                 # remove missing sex
+```
+
+###### 3.2. Extract and keep  most common species, calculate new variables
+```{r species_counts, results='asis'}
+# Extract most common species...
+species_counts <- surveys_complete %>%
+  group_by(species_id) %>% 
+  tally %>%
+  filter(n >= 50)
+
+#...and keep them!
+surveys_complete <- surveys_complete %>%
+  filter(species_id %in% species_counts$species_id)
+
+# Calculate mean and standard deviation of weight... 
+surveys_complete <- surveys_complete %>%
+  group_by(species)  %>%
+  mutate(mean_weight = mean(weight), sd_weight = sd(weight))
+
+# ..and hindfoot lenght
+surveys_complete <- surveys_complete %>%
+  group_by(species) %>%
+  mutate(mean_hindfoot_length = mean(hindfoot_length), sd_hindfoot_length = sd(hindfoot_length)) 
+  
+# Display dataset in a clearer way than that produced using the command *head* 
+datatable(surveys_complete[1:1000,1:17]) 
+```
+
+
+##### **4. Export and save cleaned data in a new .csv file**
+```{r surveys_cleaned}
+write.csv(surveys_complete, file = "surveys_cleaned.csv", row.names=FALSE)
+```
+
+
+##### **5. Plots**
+###### **5.1. Scatter and Barplot**
+```{r surveys_plot}
+surveys_plot <- read.csv ("surveys_cleaned.csv", stringsAsFactors = F)
+
+# Let's set a theme that will be used in all of the plots
+mytheme <- theme_bw() +
+           theme(panel.grid.major.x = element_blank(), 
+           panel.grid.minor.x = element_blank(), 
+           panel.grid.major.y = element_blank(), 
+           panel.grid.minor.y = element_blank())
+
+# Produce a scatterplot
+plot1 <- ggplot(data = surveys_plot, # create background
+         aes(x = weight, y = hindfoot_length)) # create x and y axes
+
+# Plot points with different colors and shapes for each species 
+plot1 <- plot1 + geom_jitter(aes(color = species)) +
+         facet_grid(. ~ sex) + # split the plot by sex
+         mytheme +  
+         labs(title = 'Observed species measures', x = 'Weight', y = 'Hindfoot lenght') + 
+         theme(text = element_text(size=10, family = "Avenir")) # change font and size
+plot1 
+
+### Produce a barplot of mean weight per species
+dodge <- position_dodge(width = 0.5) 
+
+weight_plot <- ggplot(data = surveys_plot, 
+               aes(x = species, y = weight, fill = species))
+
+weight_plot <- weight_plot + geom_bar(stat = "identity", position = dodge, width = 0.5) +
+               geom_errorbar(aes(ymin = mean_weight - sd_weight, ymax = mean_weight + sd_weight), 
+                             color = "black", position = dodge, width = 0.25) +
+               facet_grid(. ~ sex) +
+               mytheme + 
+               labs(x = 'Species', y = 'Weight') + 
+               theme(text = element_text(size = 10, family = "Avenir")) + # change font and size
+               theme(axis.text.x = element_text(angle = 60, hjust = 1))     # change labels orientation
+weight_plot
+
+### Produce a barplot of mean hindfoot lenght per species
+hindfoot_plot <- ggplot(data = surveys_plot, 
+                 aes(x = species, y = hindfoot_length, fill = species))
+
+hindfoot_plot <- hindfoot_plot + geom_bar(stat="identity", position=dodge, width=0.5) +
+                 geom_errorbar(aes(ymin = mean_hindfoot_length - sd_hindfoot_length, 
+                                   ymax = mean_hindfoot_length + sd_hindfoot_length), color = "black", 
+                                   position = dodge, width = 0.25) +
+                 facet_grid(. ~ sex) +
+                 mytheme + 
+                 labs(x = 'Species', y = 'Hindfoot lenght') + 
+                 theme(text = element_text(size = 10, family ="Avenir")) +
+                 theme(axis.text.x = element_text(angle = 60, hjust = 1)) 
+hindfoot_plot 
+```
+
+
+###### **5.2. Time series Plot**
+```{r yearly_sex_counts}
+
+# To plot an annual time series data we need to group data
+# Create a new dataset based on sex, year and species
+yearly_sex_counts <- surveys_complete %>% 
+  group_by(sex, year, species) %>%
+  tally
+
+timeseries_plot <- ggplot(data = yearly_sex_counts, 
+                   aes(x = year, y = n, color = species, group = species)) 
+
+timeseries_plot <- timeseries_plot +  geom_line(aes(group = species, color = species)) +
+                   facet_grid (. ~ sex) +
+                   mytheme +
+                   labs(title = 'Observed species in time', x = 'Year of observation', y = 'Number of species') +
+                   theme(text = element_text(size = 10, family = "Avenir"))         
+timeseries_plot
+```
